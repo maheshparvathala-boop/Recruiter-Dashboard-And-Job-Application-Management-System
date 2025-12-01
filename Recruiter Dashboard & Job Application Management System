@@ -1,0 +1,702 @@
+Project structure
+recruiter-job-system/
+├─ backend/
+│  ├─ pom.xml
+│  └─ src/main/
+│     ├─ java/com/example/recruiterjob/
+│     │  ├─ RecruiterJobApplication.java
+│     │  ├─ config/
+│     │  │   ├─ SecurityConfig.java
+│     │  │   └─ WebConfig.java
+│     │  ├─ controller/
+│     │  │   ├─ AuthController.java
+│     │  │   ├─ JobController.java
+│     │  │   └─ ApplicationController.java
+│     │  ├─ dto/
+│     │  │   ├─ LoginRequest.java
+│     │  │   ├─ RegisterRequest.java
+│     │  │   └─ AuthResponse.java
+│     │  ├─ model/
+│     │  │   ├─ User.java
+│     │  │   ├─ Job.java
+│     │  │   └─ JobApplication.java
+│     │  ├─ repository/
+│     │  │   ├─ UserRepository.java
+│     │  │   ├─ JobRepository.java
+│     │  │   └─ JobApplicationRepository.java
+│     │  ├─ security/
+│     │  │   ├─ JwtFilter.java
+│     │  │   └─ JwtUtil.java
+│     │  └─ service/
+│     │      ├─ FileStorageService.java
+│     │      └─ UserService.java
+│     └─ resources/
+│         └─ application.properties
+└─ frontend/
+   ├─ package.json
+   └─ src/
+      ├─ index.js
+      ├─ App.js
+      ├─ api.js
+      ├─ App.css
+      └─ components/
+         ├─ Register.js
+         ├─ Login.js
+         ├─ RecruiterDashboard.js
+         ├─ JobPostForm.js
+         ├─ JobList.js
+         ├─ JobDetail.js
+         ├─ ApplyForm.js
+         └─ Profile.js
+
+BACKEND — Spring Boot
+pom.xml
+<project xmlns="http://maven.apache.org/POM/4.0.0" ...>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.example</groupId>
+  <artifactId>recruiter-job</artifactId>
+  <version>1.0.0</version>
+  <properties>
+    <java.version>17</java.version>
+    <spring.boot.version>3.1.0</spring.boot.version>
+  </properties>
+  <dependencies>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-web</artifactId></dependency>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-data-jpa</artifactId></dependency>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-security</artifactId></dependency>
+    <dependency><groupId>io.jsonwebtoken</groupId><artifactId>jjwt-api</artifactId><version>0.11.5</version></dependency>
+    <dependency><groupId>io.jsonwebtoken</groupId><artifactId>jjwt-impl</artifactId><version>0.11.5</version><scope>runtime</scope></dependency>
+    <dependency><groupId>io.jsonwebtoken</groupId><artifactId>jjwt-jackson</artifactId><version>0.11.5</version><scope>runtime</scope></dependency>
+    <dependency><groupId>mysql</groupId><artifactId>mysql-connector-j</artifactId><scope>runtime</scope></dependency>
+    <dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId><optional>true</optional></dependency>
+    <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-devtools</artifactId><optional>true</optional></dependency>
+  </dependencies>
+  <build><plugins><plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin></plugins></build>
+</project>
+
+application.properties
+server.port=5000
+spring.datasource.url=jdbc:mysql://localhost:3306/recruiter_job?useSSL=false&serverTimezone=UTC
+spring.datasource.username=root
+spring.datasource.password=your_mysql_password
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=false
+
+app.upload.dir=uploads
+app.jwt.secret=change_this_to_a_very_long_secret_at_least_32_chars
+app.jwt.expiration-ms=604800000
+
+RecruiterJobApplication.java
+package com.example.recruiterjob;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class RecruiterJobApplication {
+  public static void main(String[] args){ SpringApplication.run(RecruiterJobApplication.class, args); }
+}
+
+Models
+model/User.java
+package com.example.recruiterjob.model;
+import jakarta.persistence.*;
+import java.time.Instant;
+
+@Entity
+@Table(name="users")
+public class User {
+  @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
+  private String name;
+  @Column(unique=true) private String email;
+  private String passwordHash;
+  private String role; // "APPLICANT" or "RECRUITER"
+  private String photoUrl;
+  private Instant createdAt = Instant.now();
+  // getters/setters
+}
+
+model/Job.java
+package com.example.recruiterjob.model;
+import jakarta.persistence.*;
+import java.time.Instant;
+
+@Entity
+@Table(name="jobs")
+public class Job {
+  @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
+  private String title;
+  @Column(length=5000) private String description;
+  private String location;
+  private String skills; // comma-separated
+  private Long postedBy; // recruiter user id
+  private Instant createdAt = Instant.now();
+  // getters/setters
+}
+
+model/JobApplication.java
+package com.example.recruiterjob.model;
+import jakarta.persistence.*;
+import java.time.Instant;
+
+@Entity
+@Table(name="applications")
+public class JobApplication {
+  @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
+  private Long jobId;
+  private Long applicantId;
+  private String resumeUrl;
+  private String coverLetter;
+  private String status; // APPLIED, SHORTLISTED, REJECTED
+  private Instant appliedAt = Instant.now();
+  // getters/setters
+}
+
+Repositories
+repository/UserRepository.java
+package com.example.recruiterjob.repository;
+import com.example.recruiterjob.model.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.Optional;
+public interface UserRepository extends JpaRepository<User, Long> {
+  Optional<User> findByEmail(String email);
+}
+
+repository/JobRepository.java
+package com.example.recruiterjob.repository;
+import com.example.recruiterjob.model.Job;
+import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.List;
+public interface JobRepository extends JpaRepository<Job, Long> {
+  List<Job> findByPostedBy(Long recruiterId);
+}
+
+repository/JobApplicationRepository.java
+package com.example.recruiterjob.repository;
+import com.example.recruiterjob.model.JobApplication;
+import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.List;
+public interface JobApplicationRepository extends JpaRepository<JobApplication, Long> {
+  List<JobApplication> findByJobId(Long jobId);
+  List<JobApplication> findByApplicantId(Long applicantId);
+}
+
+Services
+service/FileStorageService.java
+package com.example.recruiterjob.service;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
+import java.io.IOException;
+import java.nio.file.*;
+
+@Service
+public class FileStorageService {
+  private final Path uploadDir;
+  public FileStorageService(@Value("${app.upload.dir}") String uploadDir) {
+    this.uploadDir = Paths.get(uploadDir).toAbsolutePath().normalize();
+    try { Files.createDirectories(this.uploadDir); } catch(Exception e) { throw new RuntimeException(e); }
+  }
+  public String storeFile(MultipartFile file) {
+    if (file == null || file.isEmpty()) return null;
+    String fname = System.currentTimeMillis()+"-"+StringUtils.cleanPath(file.getOriginalFilename());
+    try {
+      Path target = uploadDir.resolve(fname);
+      Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+      return "/uploads/"+fname;
+    } catch(IOException ex){ throw new RuntimeException("Could not store file", ex); }
+  }
+}
+
+service/UserService.java
+package com.example.recruiterjob.service;
+import com.example.recruiterjob.model.User;
+import com.example.recruiterjob.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Service;
+import java.util.Optional;
+
+@Service
+public class UserService {
+  @Autowired private UserRepository userRepo;
+  private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
+
+  public Optional<User> findByEmail(String email){ return userRepo.findByEmail(email); }
+  public User save(User u){ u.setPasswordHash(encoder.encode(u.getPasswordHash())); return userRepo.save(u); }
+  public boolean matches(User u, String raw){ return encoder.matches(raw, u.getPasswordHash()); }
+  public Optional<User> findById(Long id){ return userRepo.findById(id); }
+}
+
+Security
+security/JwtUtil.java
+package com.example.recruiterjob.security;
+import io.jsonwebtoken.*;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import java.security.Key;
+import java.util.Date;
+
+@Component
+public class JwtUtil {
+  private final Key key;
+  private final long expirationMs;
+  public JwtUtil(@Value("${app.jwt.secret}") String secret, @Value("${app.jwt.expiration-ms}") long exp){
+    this.key = Keys.hmacShaKeyFor(secret.getBytes());
+    this.expirationMs = exp;
+  }
+  public String generateToken(Long userId){
+    Date now = new Date(), exp = new Date(now.getTime()+expirationMs);
+    return Jwts.builder().setSubject(String.valueOf(userId)).setIssuedAt(now).setExpiration(exp).signWith(key).compact();
+  }
+  public Long validateAndGetUserId(String token){
+    try {
+      Claims c = Jwts.parserBuilder().setSigningKey(key).build().parseClaimsJws(token).getBody();
+      return Long.parseLong(c.getSubject());
+    } catch (JwtException|IllegalArgumentException e){ return null; }
+  }
+}
+
+security/JwtFilter.java
+package com.example.recruiterjob.security;
+import com.example.recruiterjob.model.User;
+import com.example.recruiterjob.service.UserService;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+import java.io.IOException;
+import java.util.Optional;
+
+@Component
+public class JwtFilter extends OncePerRequestFilter {
+  @Autowired private JwtUtil jwtUtil;
+  @Autowired private UserService userService;
+  @Override protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain) throws ServletException, IOException {
+    String h = req.getHeader("Authorization");
+    if (h != null && h.startsWith("Bearer ")) {
+      String token = h.substring(7);
+      Long userId = jwtUtil.validateAndGetUserId(token);
+      if (userId != null) {
+        Optional<User> u = userService.findById(userId);
+        u.ifPresent(user -> req.setAttribute("currentUser", user));
+      }
+    }
+    chain.doFilter(req, res);
+  }
+}
+
+config/SecurityConfig.java
+package com.example.recruiterjob.config;
+import com.example.recruiterjob.security.JwtFilter;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.*;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+@Configuration
+public class SecurityConfig {
+  @Autowired private JwtFilter jwtFilter;
+  @Bean public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    http.cors().and().csrf().disable()
+      .authorizeHttpRequests().requestMatchers("/api/auth/**", "/uploads/**").permitAll()
+      .anyRequest().authenticated().and()
+      .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+    return http.build();
+  }
+}
+
+Controllers
+controller/AuthController.java
+package com.example.recruiterjob.controller;
+import com.example.recruiterjob.model.User;
+import com.example.recruiterjob.repository.UserRepository;
+import com.example.recruiterjob.security.JwtUtil;
+import com.example.recruiterjob.service.FileStorageService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import java.util.Map;
+import java.util.Optional;
+
+@RestController
+@RequestMapping("/api/auth")
+public class AuthController {
+  @Autowired private UserRepository userRepo;
+  @Autowired private JwtUtil jwtUtil;
+  @Autowired private FileStorageService fileService;
+
+  @PostMapping("/register")
+  public ResponseEntity<?> register(@RequestPart("data") Map<String,String> data, @RequestPart(value="photo", required=false) MultipartFile photo) {
+    String name=data.get("name"), email=data.get("email"), password=data.get("password"), role=data.get("role");
+    if(name==null||email==null||password==null) return ResponseEntity.badRequest().body(Map.of("message","Missing fields"));
+    if(userRepo.findByEmail(email).isPresent()) return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message","User exists"));
+    User u = new User(); u.setName(name); u.setEmail(email); u.setPasswordHash(password); u.setRole(role==null?"APPLICANT":role);
+    if(photo!=null) u.setPhotoUrl(fileService.storeFile(photo));
+    // save encoded password via service
+    // simple encode here using BCrypt:
+    u.setPasswordHash(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode(password));
+    userRepo.save(u);
+    String token = jwtUtil.generateToken(u.getId());
+    return ResponseEntity.ok(Map.of("token", token, "user", Map.of("id",u.getId(),"name":u.getName(),"email":u.getEmail(),"role":u.getRole(),"photoUrl":u.getPhotoUrl())));
+  }
+
+  @PostMapping("/login")
+  public ResponseEntity<?> login(@RequestBody Map<String,String> body) {
+    String email = body.get("email"), password = body.get("password");
+    if(email==null||password==null) return ResponseEntity.badRequest().body(Map.of("message","Missing"));
+    Optional<User> opt = userRepo.findByEmail(email);
+    if(opt.isEmpty()) return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message","Invalid"));
+    User u = opt.get();
+    if(!new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().matches(password, u.getPasswordHash()))
+      return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message","Invalid"));
+    String token = jwtUtil.generateToken(u.getId());
+    return ResponseEntity.ok(Map.of("token", token, "user", Map.of("id",u.getId(),"name":u.getName(),"email":u.getEmail(),"role":u.getRole(),"photoUrl":u.getPhotoUrl())));
+  }
+
+  @GetMapping("/me")
+  public ResponseEntity<?> me(javax.servlet.http.HttpServletRequest req){
+    User u = (User) req.getAttribute("currentUser");
+    if(u==null) return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message","Unauthorized"));
+    return ResponseEntity.ok(Map.of("id",u.getId(),"name":u.getName(),"email":u.getEmail(),"role":u.getRole(),"photoUrl":u.getPhotoUrl()));
+  }
+}
+
+controller/JobController.java
+package com.example.recruiterjob.controller;
+import com.example.recruiterjob.model.Job;
+import com.example.recruiterjob.repository.JobRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+import javax.servlet.http.HttpServletRequest;
+
+@RestController
+@RequestMapping("/api/jobs")
+public class JobController {
+  @Autowired private JobRepository jobRepo;
+
+  @PostMapping
+  public ResponseEntity<?> createJob(@RequestBody Job job, HttpServletRequest req) {
+    var user = (com.example.recruiterjob.model.User) req.getAttribute("currentUser");
+    if(user==null || !"RECRUITER".equals(user.getRole())) return ResponseEntity.status(403).body("Forbidden");
+    job.setPostedBy(user.getId());
+    jobRepo.save(job);
+    return ResponseEntity.ok(job);
+  }
+
+  @GetMapping
+  public List<Job> listJobs(){ return jobRepo.findAll(); }
+
+  @GetMapping("/mine")
+  public List<Job> myJobs(HttpServletRequest req){
+    var user = (com.example.recruiterjob.model.User) req.getAttribute("currentUser");
+    if(user==null) return List.of();
+    return jobRepo.findByPostedBy(user.getId());
+  }
+
+  @GetMapping("/{id}")
+  public ResponseEntity<?> getJob(@PathVariable Long id){
+    return jobRepo.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
+  }
+
+  @DeleteMapping("/{id}")
+  public ResponseEntity<?> deleteJob(@PathVariable Long id, HttpServletRequest req){
+    var user = (com.example.recruiterjob.model.User) req.getAttribute("currentUser");
+    var job = jobRepo.findById(id);
+    if(job.isEmpty()) return ResponseEntity.notFound().build();
+    if(user==null || !job.get().getPostedBy().equals(user.getId())) return ResponseEntity.status(403).build();
+    jobRepo.deleteById(id);
+    return ResponseEntity.ok(Map.of("message","deleted"));
+  }
+}
+
+controller/ApplicationController.java
+package com.example.recruiterjob.controller;
+import com.example.recruiterjob.model.JobApplication;
+import com.example.recruiterjob.repository.JobApplicationRepository;
+import com.example.recruiterjob.service.FileStorageService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import javax.servlet.http.HttpServletRequest;
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/applications")
+public class ApplicationController {
+  @Autowired private JobApplicationRepository appRepo;
+  @Autowired private FileStorageService fileService;
+
+  @PostMapping("/apply")
+  public ResponseEntity<?> apply(@RequestParam Long jobId, @RequestParam(required=false) String coverLetter, @RequestParam(required=false) MultipartFile resume, HttpServletRequest req){
+    var user = (com.example.recruiterjob.model.User) req.getAttribute("currentUser");
+    if(user==null || !"APPLICANT".equals(user.getRole())) return ResponseEntity.status(403).body("Only applicants can apply");
+    String resumeUrl = fileService.storeFile(resume);
+    JobApplication a = new JobApplication();
+    a.setJobId(jobId); a.setApplicantId(user.getId()); a.setResumeUrl(resumeUrl); a.setCoverLetter(coverLetter); a.setStatus("APPLIED");
+    appRepo.save(a);
+    return ResponseEntity.ok(a);
+  }
+
+  @GetMapping("/job/{jobId}")
+  public List<JobApplication> applicationsForJob(@PathVariable Long jobId, HttpServletRequest req){
+    var user = (com.example.recruiterjob.model.User) req.getAttribute("currentUser");
+    if(user==null || !"RECRUITER".equals(user.getRole())) return List.of();
+    return appRepo.findByJobId(jobId);
+  }
+
+  @GetMapping("/mine")
+  public List<JobApplication> myApplications(HttpServletRequest req){
+    var user = (com.example.recruiterjob.model.User) req.getAttribute("currentUser");
+    if(user==null) return List.of();
+    return appRepo.findByApplicantId(user.getId());
+  }
+
+  @PutMapping("/{id}/status")
+  public ResponseEntity<?> updateStatus(@PathVariable Long id, @RequestParam String status, HttpServletRequest req){
+    var user = (com.example.recruiterjob.model.User) req.getAttribute("currentUser");
+    if(user==null || !"RECRUITER".equals(user.getRole())) return ResponseEntity.status(403).body("Forbidden");
+    var opt = appRepo.findById(id);
+    if(opt.isEmpty()) return ResponseEntity.notFound().build();
+    var a = opt.get(); a.setStatus(status); appRepo.save(a);
+    return ResponseEntity.ok(a);
+  }
+}
+
+Static resource mapping (so /uploads/** serves files)
+config/WebConfig.java
+package com.example.recruiterjob.config;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.*;
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+  @Override
+  public void addResourceHandlers(ResourceHandlerRegistry registry) {
+    registry.addResourceHandler("/uploads/**").addResourceLocations("file:uploads/");
+  }
+}
+
+FRONTEND — React
+
+Minimal, functional React app that calls backend APIs.
+
+package.json
+{
+  "name": "recruiter-job-frontend",
+  "private": true,
+  "dependencies": {
+    "axios": "^1.4.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1"
+  },
+  "scripts": { "start": "react-scripts start", "build":"react-scripts build" }
+}
+
+src/api.js
+import axios from 'axios';
+const API_BASE = process.env.REACT_APP_API || 'http://localhost:5000';
+const client = axios.create({ baseURL: API_BASE + '/api' });
+client.interceptors.request.use(cfg => {
+  const token = localStorage.getItem('token');
+  if(token) cfg.headers.Authorization = `Bearer ${token}`;
+  return cfg;
+});
+export default client;
+
+src/App.js
+import React, {useEffect, useState} from 'react';
+import Register from './components/Register';
+import Login from './components/Login';
+import JobList from './components/JobList';
+import RecruiterDashboard from './components/RecruiterDashboard';
+import Profile from './components/Profile';
+import api from './api';
+
+export default function App(){
+  const [user,setUser] = useState(null);
+  useEffect(()=>{
+    const token = localStorage.getItem('token');
+    if(token) api.get('/auth/me').then(r=>setUser(r.data)).catch(()=>{ localStorage.removeItem('token'); setUser(null); });
+  },[]);
+  function onLogin(u, token){ localStorage.setItem('token', token); setUser(u); }
+  function onLogout(){ localStorage.removeItem('token'); setUser(null); }
+  return (
+    <div style={{maxWidth:1000, margin:'20px auto', padding:20}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <h2>Recruiter & Job Application System</h2>
+        <div>{user ? <><span>{user.name} ({user.role})</span><button onClick={onLogout} style={{marginLeft:10}}>Logout</button></> : null}</div>
+      </div>
+
+      {!user ? (
+        <div style={{display:'flex',gap:20}}>
+          <div style={{flex:1}}><h3>Register</h3><Register onSuccess={onLogin} /></div>
+          <div style={{flex:1}}><h3>Login</h3><Login onSuccess={onLogin} /></div>
+        </div>
+      ) : (
+        <>
+          <Profile user={user} setUser={setUser}/>
+          <hr/>
+          {user.role==='RECRUITER' ? <RecruiterDashboard/> : <JobList/>}
+        </>
+      )}
+    </div>
+  );
+}
+
+src/components/Register.js
+import React, {useState} from 'react';
+import api from '../api';
+export default function Register({onSuccess}){
+  const [form,setForm] = useState({name:'',email:'',password:'',role:'APPLICANT'});
+  const [photo,setPhoto] = useState(null);
+  const [msg,setMsg]=useState('');
+  async function submit(e){
+    e.preventDefault(); setMsg('');
+    try{
+      const data = new FormData();
+      data.append('data', new Blob([JSON.stringify(form)], {type:'application/json'}));
+      if(photo) data.append('photo', photo);
+      const res = await api.post('/auth/register', data, { headers:{'Content-Type':'multipart/form-data'} });
+      const {token,user} = res.data;
+      onSuccess(user, token);
+    }catch(err){ setMsg(err?.response?.data?.message || 'Register error'); }
+  }
+  return (
+    <form onSubmit={submit}>
+      <input placeholder="Name" value={form.name} onChange={e=>setForm({...form,name:e.target.value})} required />
+      <input placeholder="Email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} required />
+      <input placeholder="Password" type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} required />
+      <label>Role</label>
+      <select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>
+        <option value="APPLICANT">Applicant</option>
+        <option value="RECRUITER">Recruiter</option>
+      </select>
+      <label>Photo</label>
+      <input type="file" onChange={e=>setPhoto(e.target.files[0])}/>
+      <button type="submit">Register</button>
+      <div style={{color:'red'}}>{msg}</div>
+    </form>
+  );
+}
+
+src/components/Login.js
+import React, {useState} from 'react';
+import api from '../api';
+export default function Login({onSuccess}){
+  const [email,setEmail]=useState(''); const [password,setPassword]=useState(''); const [msg,setMsg]=useState('');
+  async function submit(e){ e.preventDefault(); setMsg(''); try{ const res=await api.post('/auth/login',{email,password}); onSuccess(res.data.user,res.data.token);}catch(err){setMsg(err?.response?.data?.message||'Login failed');} }
+  return (
+    <form onSubmit={submit}>
+      <input placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required />
+      <input placeholder="Password" type="password" value={password} onChange={e=>setPassword(e.target.value)} required />
+      <button type="submit">Login</button>
+      <div style={{color:'red'}}>{msg}</div>
+    </form>
+  );
+}
+
+src/components/Profile.js
+import React,{useState} from 'react';
+import api from '../api';
+export default function Profile({user,setUser}){
+  const [editing,setEditing]=useState(false);
+  const [form,setForm]=useState({name:user.name});
+  const [photo,setPhoto]=useState(null);
+  async function save(e){ e.preventDefault();
+    try{
+      const data=new FormData();
+      data.append('data', new Blob([JSON.stringify(form)], {type:'application/json'}));
+      if(photo) data.append('photo', photo);
+      const res = await api.put('/auth/me', data, { headers:{'Content-Type':'multipart/form-data'} });
+      setUser(res.data);
+      setEditing(false);
+    }catch(err){ console.error(err); }
+  }
+  const photoUrl = user.photoUrl ? `${(process.env.REACT_APP_API||'http://localhost:5000')}${user.photoUrl}` : null;
+  return (
+    <div style={{border:'1px solid #ddd', padding:12, borderRadius:6}}>
+      <h3>Profile</h3>
+      <div style={{display:'flex', gap:20}}>
+        <div>{photoUrl ? <img src={photoUrl} alt="p" style={{width:100,height:100,borderRadius:50}}/> : <div style={{width:100,height:100,background:'#eee',borderRadius:50}}/>}</div>
+        <div style={{flex:1}}>
+          {!editing ? <>
+            <p><strong>{user.name}</strong> ({user.role})</p>
+            <p>{user.email}</p>
+            <button onClick={()=>setEditing(true)}>Edit</button>
+          </> : (
+            <form onSubmit={save}>
+              <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/>
+              <label>Photo</label>
+              <input type="file" onChange={e=>setPhoto(e.target.files[0])}/>
+              <button type="submit">Save</button>
+              <button type="button" onClick={()=>setEditing(false)}>Cancel</button>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+src/components/RecruiterDashboard.js
+import React, {useEffect, useState} from 'react';
+import api from '../api';
+import JobPostForm from './JobPostForm';
+export default function RecruiterDashboard(){
+  const [jobs,setJobs]=useState([]);
+  useEffect(()=>{ api.get('/jobs/mine').then(r=>setJobs(r.data)).catch(()=>{}); },[]);
+  async function refresh(){ const r=await api.get('/jobs/mine'); setJobs(r.data); }
+  return (
+    <div>
+      <h3>Recruiter Dashboard</h3>
+      <JobPostForm onPosted={refresh}/>
+      <h4>My Jobs</h4>
+      <ul>{jobs.map(j=> <li key={j.id}>{j.title} — <a href={`/jobs/${j.id}`}>View</a></li>)}</ul>
+    </div>
+  );
+}
+
+src/components/JobPostForm.js
+import React,{useState} from 'react';
+import api from '../api';
+export default function JobPostForm({onPosted}){
+  const [form,setForm]=useState({title:'',description:'',location:'',skills:''});
+  async function submit(e){ e.preventDefault(); await api.post('/jobs', form); setForm({title:'',description:'',location:'',skills:''}); if(onPosted) onPosted(); }
+  return (
+    <form onSubmit={submit} style={{marginBottom:12}}>
+      <input placeholder="Title" value={form.title} onChange={e=>setForm({...form,title:e.target.value})} required/>
+      <textarea placeholder="Description" value={form.description} onChange={e=>setForm({...form,description:e.target.value})} required/>
+      <input placeholder="Location" value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/>
+      <input placeholder="Skills (comma)" value={form.skills} onChange={e=>setForm({...form,skills:e.target.value})}/>
+      <button type="submit">Post Job</button>
+    </form>
+  );
+}
+
+src/components/JobList.js
+import React,{useEffect,useState} from 'react';
+import api from '../api';
+export default function JobList(){
+  const [jobs,setJobs]=useState([]);
+  useEffect(()=>{ api.get('/jobs').then(r=>setJobs(r.data)); },[]);
+  return (
+    <div>
+      <h3>Available Jobs</h3>
+      <ul>
+        {jobs.map(j=> <li key={j.id}>
+          <b>{j.title}</b> — {j.location} <div>{j.description?.slice(0,150)}</div>
+          <a href={`/jobs/${j.id}`}>View</a>
+        </li>)}
+      </ul>
+    </div>
+  );
+}
